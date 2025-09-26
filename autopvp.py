@@ -76,7 +76,7 @@ class AutoPVPApp(object):
             'limitRank': 0,
             'maxNumber': 2,
             'round': 1,
-            'title': '自动对战测试(%s)' % self.__room_id,
+            'title': '一起来游戏吧~',
             'password': '',
         }
         return default
@@ -98,7 +98,7 @@ class AutoPVPApp(object):
 
     def __get_hello_message(self) -> str:
         logger.info('The bot is sending a hello message ...')
-        hello_message = {'url': 'room/message', 'msg': '--- 请忽略上方信息 ---\n欢迎进入自动对战房间，此房间尚在测试阶段，可能有较多bug，如遇bug，请联系项目开发者tonyXFY。'}
+        hello_message = {'url': 'room/message', 'msg': '欢迎进入自动对战房间，如遇bug，请联系机器人维护者 flextrek, QQ交流群: 585269987 。'}
         return self.__format_message(hello_message)
 
     def __get_create_room_message(self) -> str:
@@ -187,6 +187,16 @@ class AutoPVPApp(object):
         logger.info('The bot is reminding left games...')
         left_games = {'url': 'room/message', 'msg': '剩余游戏局数: %d，玩家将在本小时内无法游戏。' % self.__USER_LIST[uid]['left']}
         return self.__format_message(left_games)
+    
+    def __get_room_list_message(self) -> str:
+        logger.info('The bot is getting room list ...')
+        room_list = {'url': 'room/list'}
+        return self.__format_message(room_list)
+    
+    def __get_room_enter_message(self, room_id: int) -> str:
+        logger.info('The bot is entering a specific room ...')
+        room_enter = {'url': 'room/enter', 'id': room_id}
+        return self.__format_message(room_enter)
 
     def __user_message_parser(self, split_arg) -> tuple:
         logger.info('The bot is parsing user-input configurations ...')
@@ -276,6 +286,7 @@ class AutoPVPApp(object):
             async with session.ws_connect(url=self.__url, heartbeat=10.0, headers=self.__generate_headers()) as ws:
                 await ws.send_str(self.__get_enter_room_message())
 
+                await ws.send_str(self.__get_room_list_message())
                 opponent_uid = ''
                 is_gaming = False
 
@@ -294,74 +305,81 @@ class AutoPVPApp(object):
                                 current_game_opponent_solved_bv = 1 # This should avoid bugs in calcuation
                                 current_game_difficulty = ''
 
-                                if text_message['url'] == 'pvp/enter':
-                                    await ws.send_str(self.__get_create_room_message())
-                                elif text_message['url'] == 'pvp/room/enter/event' and self.__uid != text_message['user']['pvp']['uid']:
-                                    opponent_uid = text_message['user']['pvp']['uid']
-                                    logger.info('An opponent entered the room ...')
-                                    await ws.send_str(self.__get_hello_message())
-                                    self.__RESUMED = False
-                                    self.__level = self.__get_default_level(text_message['user']['user']['timingLevel'])
-                                    if opponent_uid not in self.__USER_LIST:
-                                        self.__USER_LIST[opponent_uid] = {}
-                                        if text_message['user']['user']['vip']:
-                                            self.__USER_LIST[opponent_uid]['original'] = self.__VIP_COUNTS
-                                            self.__USER_LIST[opponent_uid]['left'] = self.__VIP_COUNTS
-                                        else:
-                                            self.__USER_LIST[opponent_uid]['original'] = self.__NORMAL_COUNTS
-                                            self.__USER_LIST[opponent_uid]['left'] = self.__NORMAL_COUNTS
-                                    if opponent_uid in ban_list or self.__USER_LIST[opponent_uid]['left'] <= 0:
-                                        logger.info('The opponent is in the ban list ...')
-                                        await ws.send_str(self.__get_room_kick_out_message(uid=opponent_uid))
-                                elif text_message['url'] == 'pvp/room/exit/event' and opponent_uid == text_message['user']['pvp']['uid']:
-                                    if opponent_uid in ban_list:
-                                        logger.info('The opponent is kicked out of the room ...')
-                                    else:
-                                        logger.info('The opponent exited the room ...')
-                                elif text_message['url'] == 'pvp/user/online' and opponent_uid == text_message['uid'] and text_message['offline']:
-                                    logger.info('The opponent is offline now, refreshing the room ...')
-                                    await ws.send_str(self.__get_exit_room_message())
-                                elif text_message['url'] == 'pvp/room/ready' and opponent_uid == text_message['uid'] and text_message['ready']:
-                                    logger.info('The opponent got ready ...')
-                                    await ws.send_str(self.__get_start_battle_message())
-                                elif text_message['url'] == 'pvp/room/update' and self.__uid in text_message['room']['userIdList']:
-                                    if text_message['room']['expired']:
-                                        logger.info('The room has expired ...')
-                                    if text_message['room']['gaming']:
-                                        is_gaming = True
-                                        await ws.send_str(self.__get_battle_board_message())
-                                        self.__USER_LIST[opponent_uid]['left'] -= 1
-                                    else:
-                                        logger.info('The room status has been updated ...')
-                                        if not self.__RESUMED:
-                                            await ws.send_str(self.__get_level_status_message())
-                                        if opponent_uid and self.__USER_LIST[opponent_uid]['left'] <= 3:
-                                            await ws.send_str(self.__get_left_games_message(uid=opponent_uid))
-                                        if opponent_uid and self.__USER_LIST[opponent_uid]['left'] <= 0:
-                                            await ws.send_str(self.__get_exit_room_message())
-                                        if opponent_uid == text_message['room']['users'][0]['pvp']['uid']:
-                                            if text_message['room']['coin'] == 0 and len(text_message['room']['password']) == 0 and text_message['room']['minesweeperAutoOpen'] and not text_message['room']['minesweeperFlagForbidden'] and text_message['room']['round'] == 1 and text_message['room']['maxNumber'] == 2: 
-                                                await ws.send_str(self.__get_ready_status_message())
-                                            else:
-                                                await ws.send_str(self.__get_room_edit_warning_message())
-                                        if len(opponent_uid) != 0 and (len(text_message['room']['userIdList']) != 2 or opponent_uid not in text_message['room']['userIdList']) and opponent_uid not in ban_list and not self.__RESUMED:
-                                            await ws.send_str(self.__get_edit_room_message())
-                                            self.__RESUMED = True
+                                # if text_message['url'] == 'pvp/enter':
+                                #     await ws.send_str(self.__get_create_room_message())
+                                # elif text_message['url'] == 'pvp/room/enter/event' and self.__uid != text_message['user']['pvp']['uid']:
+                                #     opponent_uid = text_message['user']['pvp']['uid']
+                                #     logger.info('An opponent entered the room ...')
+                                #     await ws.send_str(self.__get_hello_message())
+                                #     self.__RESUMED = False
+                                #     self.__level = self.__get_default_level(text_message['user']['user']['timingLevel'])
+                                #     if opponent_uid not in self.__USER_LIST:
+                                #         self.__USER_LIST[opponent_uid] = {}
+                                #         if text_message['user']['user']['vip']:
+                                #             self.__USER_LIST[opponent_uid]['original'] = self.__VIP_COUNTS
+                                #             self.__USER_LIST[opponent_uid]['left'] = self.__VIP_COUNTS
+                                #         else:
+                                #             self.__USER_LIST[opponent_uid]['original'] = self.__NORMAL_COUNTS
+                                #             self.__USER_LIST[opponent_uid]['left'] = self.__NORMAL_COUNTS
+                                #     if opponent_uid in ban_list or self.__USER_LIST[opponent_uid]['left'] <= 0:
+                                #         logger.info('The opponent is in the ban list ...')
+                                #         await ws.send_str(self.__get_room_kick_out_message(uid=opponent_uid))
+                                # elif text_message['url'] == 'pvp/room/exit/event' and opponent_uid == text_message['user']['pvp']['uid']:
+                                #     if opponent_uid in ban_list:
+                                #         logger.info('The opponent is kicked out of the room ...')
+                                #     else:
+                                #         logger.info('The opponent exited the room ...')
+                                # elif text_message['url'] == 'pvp/user/online' and opponent_uid == text_message['uid'] and text_message['offline']:
+                                #     logger.info('The opponent is offline now, refreshing the room ...')
+                                #     await ws.send_str(self.__get_exit_room_message())
+                                # elif text_message['url'] == 'pvp/room/ready' and opponent_uid == text_message['uid'] and text_message['ready']:
+                                #     logger.info('The opponent got ready ...')
+                                #     await ws.send_str(self.__get_start_battle_message())
+                                # elif text_message['url'] == 'pvp/room/update' and self.__uid in text_message['room']['userIdList']:
+                                #     if text_message['room']['expired']:
+                                #         logger.info('The room has expired ...')
+                                #     if text_message['room']['gaming']:
+                                #         is_gaming = True
+                                #         await ws.send_str(self.__get_battle_board_message())
+                                #         self.__USER_LIST[opponent_uid]['left'] -= 1
+                                #     else:
+                                #         logger.info('The room status has been updated ...')
+                                #         if not self.__RESUMED:
+                                #             await ws.send_str(self.__get_level_status_message())
+                                #         if opponent_uid and self.__USER_LIST[opponent_uid]['left'] <= 3:
+                                #             await ws.send_str(self.__get_left_games_message(uid=opponent_uid))
+                                #         if opponent_uid and self.__USER_LIST[opponent_uid]['left'] <= 0:
+                                #             await ws.send_str(self.__get_exit_room_message())
+                                #         if opponent_uid == text_message['room']['users'][0]['pvp']['uid']:
+                                #             if text_message['room']['coin'] == 0 and len(text_message['room']['password']) == 0 and text_message['room']['minesweeperAutoOpen'] and not text_message['room']['minesweeperFlagForbidden'] and text_message['room']['round'] == 1 and text_message['room']['maxNumber'] == 2: 
+                                #                 await ws.send_str(self.__get_ready_status_message())
+                                #             else:
+                                #                 await ws.send_str(self.__get_room_edit_warning_message())
+                                #         if len(opponent_uid) != 0 and (len(text_message['room']['userIdList']) != 2 or opponent_uid not in text_message['room']['userIdList']) and opponent_uid not in ban_list and not self.__RESUMED:
+                                #             await ws.send_str(self.__get_edit_room_message())
+                                #             self.__RESUMED = True
 
-                                elif text_message['url'] == 'pvp/room/exit':
-                                    # keep alive
-                                    self.__level_hold_on = False
-                                    self.__INC_FACTOR = 0.24
-                                    self.__DEC_FACTOR = 0.08
-                                    opponent_uid = ''
-                                    logger.info('The bot left the room ...')
-                                    logger.info('Re-creating the room ...')
-                                    await ws.send_str(self.__get_create_room_message())
-                                elif text_message['url'] == 'pvp/room/message' and opponent_uid == text_message['msg']['user']['uid']:
-                                    message = text_message['msg']['message'].strip().split()
-                                    if message:
-                                        result = self.__user_message_parser(message)
-                                        await ws.send_str(result)
+                                # elif text_message['url'] == 'pvp/room/exit':
+                                #     # keep alive
+                                #     self.__level_hold_on = False
+                                #     self.__INC_FACTOR = 0.24
+                                #     self.__DEC_FACTOR = 0.08
+                                #     opponent_uid = ''
+                                #     logger.info('The bot left the room ...')
+                                #     logger.info('Re-creating the room ...')
+                                #     await ws.send_str(self.__get_create_room_message())
+                                # elif text_message['url'] == 'pvp/room/message' and opponent_uid == text_message['msg']['user']['uid']:
+                                #     message = text_message['msg']['message'].strip().split()
+                                #     if message:
+                                #         result = self.__user_message_parser(message)
+                                #         await ws.send_str(result)
+                                if text_message['url'] == 'pvp/room/list':
+                                    for room in text_message['roomList']:
+                                        print(str(room['id']), str(room['title']), str(room['ownUserId']))
+                                        if room['ownUserId'] == '51945':
+                                            await ws.send_str(self.__get_room_enter_message(room['id']))
+                                            await ws.send_str(self.__get_room_kick_out_message(uid='51945'))
+                                    # room list received, do nothing
 
                             else:
                                 if text_message['url'] == 'pvp/minesweeper/info':
