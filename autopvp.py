@@ -48,7 +48,7 @@ class AutoPVPApp(object):
             "User-Agent": "okhttp/4.7.2",
             "Accept-Encoding": "gzip", 
             "api-key": hashlib.md5(api_key_resource.encode()).hexdigest(),
-            "channel": "Android", 
+            "channel": "App", 
             "device": "",
             "version": str(self.__compat_version), 
             "time-stamp": timestamp, 
@@ -93,7 +93,7 @@ class AutoPVPApp(object):
 
     def __get_enter_room_message(self) -> str:
         logger.info('The bot is entering the whole pvp room ...')
-        enter_room = {'version': self.__compat_version, 'url': "enter"}
+        enter_room = {'channel': "App", 'version': self.__compat_version, 'url': "enter"}
         return self.__format_message(enter_room)
 
     def __get_hello_message(self) -> str:
